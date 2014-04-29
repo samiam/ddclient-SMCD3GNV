@@ -88,11 +88,7 @@ fi
 # Cached cookie unsuccessful... reset
 router_login
 fetch_connection_status
-check_connection_status
-if [ $? -eq 0 ]; then
-   print_wan_ip
-   cleanup
-else
-   echo "Error: Unable to obtain WAN connection ip address: see $TEMPFILE"
-   exit 1
-fi
+check_connection_status && print_wan_ip && cleanup  # success!
+
+echo "Error: Unable to obtain WAN connection ip address: see $TEMPFILE"
+exit 1
