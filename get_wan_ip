@@ -1,0 +1,98 @@
+#!/bin/bash
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+################################################################################
+#
+# This script can be used to obtain the WAN ip address from a SMCD3GNV router.
+# Software version:  eMTA & DOCSIS Software Version: 3.1.5.3.3_NCS 
+#
+# Home page: https://github.com/samiam/ddclient-SMCD3GNV
+#
+# ddclient example setup:
+#  use=cmd, cmd=/etc/ddclient/get_wan_ip
+#  protocol=freedns
+#  server=freedns.afraid.org
+#  login=<your_login>
+#  password=<your_password>
+#  <your_ddns_hostname>
+#
+################################################################################
+
+## Start config
+ROUTER_IP="10.0.0.1"         # default
+ROUTER_PASSWORD="password"   # default
+## End config
+
+export PATH=/bin:/usr/bin:$PATH
+
+COOKIE_JAR=/var/tmp/cookie_jar    # for curl to store cookies
+TEMPFILE=$(tempfile)              # downloaded file
+
+################################################################################  
+# Login to router and add cookie
+function router_login () {
+  curl --silent \
+       --cookie-jar $COOKIE_JAR \
+       --output /dev/null \
+       --form "usernamehaha=admin&passwordhaha=$ROUTER_PASSWORD" \
+       --referer http://$ROUTER_IP/goform/login \
+       http://$ROUTER_IP/goform/login
+}
+
+# Get connection status page
+# --location will follow redirect to home_loggedout.asp
+# if cookie doesn't work
+function fetch_connection_status () {
+  curl --silent \
+       --cookie $COOKIE_JAR \
+       --output $TEMPFILE \
+       --referer http://$ROUTER_IP/goform/login \
+       --location \
+       http://$ROUTER_IP/user/connection_status.asp
+}
+
+# Sanity check that we got page
+function check_connection_status () {
+  grep -q connection_status.asp $TEMPFILE
+}
+
+function print_wan_ip () {
+  perl -ne '/^var wan_ipAddress = \"(.*)\"/ && print "$1\n";' $TEMPFILE
+}
+
+function cleanup () {
+  rm $TEMPFILE
+  exit 0
+}
+
+################################################################################
+## Mainline
+
+# Try old cookie...
+if [ -s $COOKIE_JAR ]; then
+  #echo "Using cached cookie..."
+  fetch_connection_status
+  check_connection_status && print_wan_ip && cleanup  # success!
+fi
+
+# Cached cookie unsuccessful... reset
+router_login
+fetch_connection_status
+check_connection_status
+if [ $? -eq 0 ]; then
+   print_wan_ip
+   cleanup
+else
+   echo "Error: Unable to obtain WAN connection ip address: see $TEMPFILE"
+   exit 1
+fi
